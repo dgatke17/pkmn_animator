@@ -33,31 +33,35 @@ def cli() -> None:
     program.add_argument('--onnxruntime', help=wording.get('help.install_dependency').format(dependency='onnxruntime'), choices=ONNXRUNTIMES.keys())
     program.add_argument('--skip-conda', help=wording.get('help.skip_conda'), action='store_true')
     program.add_argument('-v', '--version', version=metadata.get('name') + ' ' + metadata.get('version'), action='version')
+    run(program)
+
+
+def run(program: ArgumentParser) -> None:
     args = program.parse_args()
-
-    # Set default variant if not provided
-    if not args.onnxruntime:
-        args.onnxruntime = 'cuda-12.2'
-
-    run(args)
-
-
-def run(args) -> None:
     python_id = 'cp' + str(sys.version_info.major) + str(sys.version_info.minor)
 
     if not args.skip_conda and 'CONDA_PREFIX' not in os.environ:
         sys.stdout.write(wording.get('conda_not_activated') + os.linesep)
         sys.exit(1)
-
-    onnxruntime = args.onnxruntime
-
-    if onnxruntime:
+    if args.onnxruntime:
+        answers = {
+            'onnxruntime': args.onnxruntime
+        }
+    else:
+        answers = inquirer.prompt(
+            [
+                inquirer.List('onnxruntime', message=wording.get('help.install_dependency').format(dependency='onnxruntime'), choices=list(ONNXRUNTIMES.keys()))
+            ]
+        )
+    if answers:
+        onnxruntime = answers['onnxruntime']
         onnxruntime_name, onnxruntime_version = ONNXRUNTIMES[onnxruntime]
 
         subprocess.call(['pip', 'install', '-r', 'requirements.txt', '--force-reinstall'])
         if onnxruntime in ['rocm-5.4.2', 'rocm-5.6']:
             if python_id in ['cp39', 'cp310', 'cp311']:
-                rocm_version = onnxruntime.replace('-', '').replace('.', '')
+                rocm_version = onnxruntime.replace('-', '')
+                rocm_version = rocm_version.replace('.', '')
                 wheel_name = f'onnxruntime_training-{onnxruntime_version}+{rocm_version}-{python_id}-{python_id}-manylinux_2_17_x86_64.manylinux2014_x86_64.whl'
                 wheel_path = os.path.join(tempfile.gettempdir(), wheel_name)
                 wheel_url = f'https://download.onnxruntime.ai/{wheel_name}'
@@ -68,11 +72,16 @@ def run(args) -> None:
         else:
             subprocess.call(['pip', 'uninstall', 'onnxruntime', onnxruntime_name, '-y', '-q'])
             if onnxruntime == 'cuda-12.2':
-                subprocess.call(['pip', 'install', f'{onnxruntime_name}=={onnxruntime_version}', '--extra-index-url', 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple', '--force-reinstall'])
+                subprocess.call([
+                    'pip', 'install', f'{onnxruntime_name}=={onnxruntime_version}', 
+                    '--extra-index-url', 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple', 
+                    '--force-reinstall', 'numpy==1.26.4'
+                ])
             else:
-                subprocess.call(['pip', 'install', f'{onnxruntime_name}=={onnxruntime_version}', '--force-reinstall'])
-    else:
-        print("No action taken")
+                subprocess.call([
+                    'pip', 'install', f'{onnxruntime_name}=={onnxruntime_version}', 
+                    '--force-reinstall', 'numpy==1.26.4'
+                ])
 
 
 if __name__ == "__main__":
